@@ -207,14 +207,44 @@
   const socket = io(); // same-origin — server serves this file, so no URL needed
   const app = document.getElementById('app');
 
+  // Persistent player identity — survives reconnects (wifi/cellular switches,
+  // backgrounding the app) and page reloads, unlike socket.id which changes
+  // every time the connection drops.
+  function getToken(){
+    let t = localStorage.getItem('bjwm_token');
+    if(!t){
+      t = 'p_' + Math.random().toString(36).slice(2) + Date.now().toString(36);
+      localStorage.setItem('bjwm_token', t);
+    }
+    return t;
+  }
+  const myId = getToken(); // "myId" throughout this file now means "my player token"
+
   let room = null;
-  let myId = null;
   let lastAckedResults = null;
   let toastTimer = null;
   let selectedChip = null;
   let joinError = '';
 
-  socket.on('connect', () => { myId = socket.id; render(); });
+  // If we were already in a room (saved from a previous connection or page
+  // load), silently rejoin as soon as we connect — this is what makes a
+  // dropped wifi/cellular connection recover instead of stranding the player.
+  socket.on('connect', () => {
+    const savedRoom = localStorage.getItem('bjwm_room');
+    const savedName = localStorage.getItem('bjwm_name');
+    if (savedRoom && savedName) {
+      socket.emit('join_room', { code: savedRoom, name: savedName, token: myId }, (res) => {
+        if(!res.ok){
+          // Room's gone (server restarted, or it never existed) — clear stale state.
+          localStorage.removeItem('bjwm_room');
+          room = null;
+          render();
+        }
+      });
+    } else {
+      render();
+    }
+  });
   socket.on('room_state', (r) => {
     room = r;
     if (room.lastResults && room.lastResults !== lastAckedResults) {
@@ -296,17 +326,21 @@
     document.getElementById('createBtn').onclick = () => {
       const name = document.getElementById('createName').value.trim() || 'Banker';
       const rpb = parseInt(document.getElementById('roundsPerBanker').value, 10);
-      socket.emit('create_room', { name, roundsPerBanker: rpb }, (res) => {
-        if(!res.ok){ joinError = res.error || 'Could not create room'; render(); }
+      socket.emit('create_room', { name, roundsPerBanker: rpb, token: myId }, (res) => {
+        if(!res.ok){ joinError = res.error || 'Could not create room'; render(); return; }
+        localStorage.setItem('bjwm_room', res.code);
+        localStorage.setItem('bjwm_name', name);
       });
     };
     document.getElementById('joinBtn').onclick = () => {
       const name = document.getElementById('joinName').value.trim() || 'Player';
       const code = document.getElementById('joinCode').value.trim().toUpperCase();
       if(!code){ joinError = 'Enter a room code'; render(); return; }
-      socket.emit('join_room', { code, name }, (res) => {
-        if(!res.ok){ joinError = res.error || 'Could not join room'; render(); }
-        else { joinError=''; }
+      socket.emit('join_room', { code, name, token: myId }, (res) => {
+        if(!res.ok){ joinError = res.error || 'Could not join room'; render(); return; }
+        joinError = '';
+        localStorage.setItem('bjwm_room', code);
+        localStorage.setItem('bjwm_name', name);
       });
     };
   }
@@ -352,7 +386,10 @@
           <div class="eyebrow">Room</div>
           <div class="room-code">${room.code}</div>
         </div>
-        <div class="banker-badge">🎩 Banker: ${bankerName}${iAmBanker ? ' (you)':''}</div>
+        <div style="display:flex; align-items:center; gap:8px;">
+          <div class="banker-badge">🎩 Banker: ${bankerName}${iAmBanker ? ' (you)':''}</div>
+          <button id="leaveBtn" title="Leave table" style="background:none;border:none;color:rgba(243,233,210,.5);font-family:'IBM Plex Mono',monospace;font-size:11px;cursor:pointer;padding:4px;">✕</button>
+        </div>
       </div>
 
       <div class="felt">
@@ -372,6 +409,17 @@
     `;
 
     wireActionArea(iAmBanker);
+
+    const leaveBtn = document.getElementById('leaveBtn');
+    if(leaveBtn){
+      leaveBtn.onclick = () => {
+        if(!confirm('Leave this table? Your balance stays as-is if you rejoin with the code later.')) return;
+        localStorage.removeItem('bjwm_room');
+        localStorage.removeItem('bjwm_name');
+        room = null;
+        render();
+      };
+    }
   }
 
   function renderActionArea(iAmBanker){
