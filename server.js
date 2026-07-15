@@ -185,23 +185,31 @@ function resolvePayout(room) {
 }
 
 io.on("connection", (socket) => {
+  console.log(`[connect] ${socket.id}`);
+
   socket.on("create_room", ({ name, roundsPerBanker }, cb) => {
     const code = makeRoomCode();
     const room = newRoom(code, socket.id, name, roundsPerBanker || 10);
     rooms[code] = room;
     socket.join(code);
+    console.log(`[create_room] code=${code} by=${name} (${socket.id})`);
     cb({ ok: true, code });
     broadcastState(room);
   });
 
   socket.on("join_room", ({ code, name }, cb) => {
+    console.log(`[join_room] attempt code=${code} by=${name} (${socket.id}), known rooms=${Object.keys(rooms).join(",")}`);
     const room = rooms[code];
-    if (!room) return cb({ ok: false, error: "Room not found" });
+    if (!room) {
+      console.log(`[join_room] FAILED — room ${code} not found`);
+      return cb({ ok: false, error: "Room not found" });
+    }
     if (room.players[socket.id]) return cb({ ok: true }); // already in
 
     room.players[socket.id] = { id: socket.id, name, balance: 0 };
     room.turnOrder.push(socket.id);
     socket.join(code);
+    console.log(`[join_room] OK — ${name} joined ${code}, players now: ${room.turnOrder.length}`);
     cb({ ok: true, code });
     broadcastState(room);
   });
