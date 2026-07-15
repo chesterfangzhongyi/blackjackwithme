@@ -55,7 +55,7 @@ function newRoom(code, creatorToken, creatorName, roundsPerBanker) {
     hands: {},                     // { token: [...cards] }, includes "banker" key
     standing: {},                  // { token: true } once stood/busted/blackjack
     currentTurn: null,
-    phase: "lobby",                // lobby | betting | dealing | player_turns | banker_turn | payout
+    phase: "betting",              // betting | dealing | player_turns | banker_turn | payout
   };
 }
 
