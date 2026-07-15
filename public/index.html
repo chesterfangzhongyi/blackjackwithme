@@ -46,7 +46,10 @@
     min-height:100vh;
     display:flex;
     flex-direction:column;
-    padding:env(safe-area-inset-top,16px) 16px calc(env(safe-area-inset-bottom,16px) + 16px);
+    padding:env(safe-area-inset-top,16px) 16px 0;
+  }
+  #app.has-action-bar{
+    padding-bottom: calc(env(safe-area-inset-bottom,16px) + 108px);
   }
   h1,h2,h3{font-family:'Fraunces',serif; margin:0; font-weight:600;}
   .eyebrow{
@@ -174,9 +177,16 @@
   .chip.selected{transform:translateY(-8px);}
   .chip.selected .chip-inner{background:var(--gold); color:var(--felt-dark); border-color:var(--felt-dark);}
 
-  /* ---------- Action bar ---------- */
+  /* ---------- Action dock (fixed to bottom, always reachable) ---------- */
+  .action-dock{
+    position:fixed; left:50%; transform:translateX(-50%); bottom:0;
+    width:100%; max-width:520px;
+    background:linear-gradient(180deg, transparent 0%, var(--felt-edge) 28%);
+    padding:18px 16px calc(env(safe-area-inset-bottom,16px) + 14px);
+    z-index:40;
+  }
   .action-bar{
-    position:sticky; bottom:0; display:flex; gap:10px; padding-top:14px;
+    display:flex; gap:10px;
   }
   .action-bar .btn{flex:1;}
   .btn-stand{background:rgba(243,233,210,.9); color:var(--felt-dark);}
@@ -188,7 +198,7 @@
   }
 
   .toast{
-    position:fixed; left:50%; bottom:24px; transform:translateX(-50%);
+    position:fixed; left:50%; bottom:calc(env(safe-area-inset-bottom,16px) + 128px); transform:translateX(-50%);
     background:var(--felt-light); border:1px solid var(--gold); color:var(--cream);
     padding:12px 18px; border-radius:12px; font-family:'IBM Plex Mono',monospace; font-size:13px;
     box-shadow:0 8px 24px var(--shadow); max-width:90%; text-align:center; z-index:50;
@@ -281,6 +291,7 @@
 
   // ---------------- Lobby ----------------
   function renderLobby(){
+    app.classList.remove('has-action-bar');
     app.innerHTML = `
       <div class="lobby-wrap">
         <div class="brand">
@@ -380,6 +391,7 @@
       `;
     }).join('');
 
+    app.classList.add('has-action-bar');
     app.innerHTML = `
       <div class="table-header">
         <div>
@@ -404,7 +416,7 @@
         </div>
       </div>
 
-      ${renderActionArea(iAmBanker)}
+      <div class="action-dock">${renderActionArea(iAmBanker)}</div>
       ${renderToast()}
     `;
 
