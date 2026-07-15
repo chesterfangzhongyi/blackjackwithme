@@ -11,6 +11,12 @@ const app = express();
 const server = http.createServer(app);
 const io = new Server(server, { cors: { origin: "*" } });
 
+// Serve the frontend (public/index.html, manifest.json, icons) from the same
+// origin as the WebSocket server — one Railway deploy, no separate hosting needed.
+app.use(express.static("public"));
+
+app.get("/health", (req, res) => res.json({ ok: true, rooms: Object.keys(rooms).length }));
+
 const MIN_BET = 1;
 const MAX_BET = 5;
 

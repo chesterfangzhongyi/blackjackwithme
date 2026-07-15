@@ -1,0 +1,14 @@
+{
+  "name": "Blackjack With Me",
+  "short_name": "BJ w/ Me",
+  "description": "Play blackjack with your friends, banker rotates every few rounds.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#0B3D2E",
+  "theme_color": "#0B3D2E",
+  "orientation": "portrait",
+  "icons": [
+    { "src": "/icons/icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "/icons/icon-512.png", "sizes": "512x512", "type": "image/png" }
+  ]
+}
