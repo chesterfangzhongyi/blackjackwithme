@@ -130,6 +130,10 @@
   .banker-seat{text-align:center;}
   .hand{display:flex; justify-content:center; gap:-8px; flex-wrap:wrap; min-height:78px; perspective:400px;}
   .hand-score{font-family:'IBM Plex Mono',monospace; font-size:13px; color:var(--gold-soft); margin-top:6px; text-align:center;}
+  .hand-score-bj{
+    display:inline-block; color:var(--felt-dark); background:var(--gold-soft);
+    font-weight:700; padding:2px 10px; border-radius:999px; letter-spacing:.05em;
+  }
 
   .player-seat.compact .card{width:36px; height:50px; font-size:12px;}
   .player-seat.compact .card .suit{font-size:13px;}
@@ -358,12 +362,24 @@
     return total;
   }
 
-  // Display string for a hand's total — plain "17" normally, or "8/18" style
-  // for a soft hand (one where an Ace is doing double duty as 1 or 11).
+  // Display string for a hand's total — plain "17" normally, "8/18" style for
+  // a soft hand, or "BJ" for a genuine two-card natural (Ace + 10-value) —
+  // no need to spell out "11/21" when it's just a blackjack.
   function scoreDisplay(hand){
+    const known = hand.filter(c => c.rank !== '?');
+    if(known.length === 2){
+      const hasAce = known.some(c => c.rank === 'A');
+      const hasTenValue = known.some(c => ['10','J','Q','K'].includes(c.rank));
+      if(hasAce && hasTenValue) return 'BJ';
+    }
     const high = scoreOf(hand);
     const low = scoreLow(hand);
     return low === high ? `${high}` : `${low}/${high}`;
+  }
+
+  function handScoreHtml(hand){
+    const val = scoreDisplay(hand);
+    return `<div class="hand-score ${val === 'BJ' ? 'hand-score-bj' : ''}">${val}</div>`;
   }
 
   function cardBaseValue(card){
@@ -494,7 +510,7 @@
           <div class="sub-hand ${isActiveHand ? 'active-hand':''}">
             ${handsArr.length > 1 ? `<div class="sub-hand-label">Hand ${idx+1} · $${h.bet}</div>` : ''}
             <div class="hand">${handCardsHtml(key, h.cards, nextCardCounts)}</div>
-            <div class="hand-score">${scoreDisplay(h.cards)}</div>
+            ${handScoreHtml(h.cards)}
             <div class="player-status">${status}</div>
           </div>
         `;
@@ -530,7 +546,7 @@
         <div class="banker-seat">
           <div class="seat-label">Banker's hand</div>
           <div class="hand" style="justify-content:center;">${bankerCardsHtml}</div>
-          ${showBankerScore ? `<div class="hand-score">${scoreDisplay(bankerHand)}</div>` : ''}
+          ${showBankerScore ? handScoreHtml(bankerHand) : ''}
         </div>
 
         <div class="players-arc" style="min-height:${others.length ? (compactClass ? 200 : 240) : 0}px;">
