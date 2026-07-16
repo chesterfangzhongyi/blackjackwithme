@@ -388,7 +388,7 @@ io.on("connection", (socket) => {
 
     const hand = currentHand(room, token);
     hand.cards.push(...deal(room.deck, 1));
-    if (isBust(hand.cards)) {
+    if (scoreHand(hand.cards).total >= 21) { // bust (>21) or an unbeatable 21 — either way, no more hits make sense
       hand.standing = true;
       advanceAfterHandDone(room);
     }
@@ -452,7 +452,17 @@ io.on("connection", (socket) => {
       { cards: [cardA, ...deal(room.deck, 1)], bet, standing: false, doubled: false, fromSplit: true },
       { cards: [cardB, ...deal(room.deck, 1)], bet, standing: false, doubled: false, fromSplit: true },
     ];
-    room.activeHandIndex[token] = 0;
+    // Same rule as a normal hit: a hand that lands on 21 stands automatically.
+    room.hands[token].forEach((h) => {
+      if (scoreHand(h.cards).total === 21) h.standing = true;
+    });
+
+    if (allHandsStanding(room, token)) {
+      room.activeHandIndex[token] = 0;
+      advanceAfterHandDone(room); // both halves already resolved — move on
+    } else {
+      room.activeHandIndex[token] = firstUnresolvedHandIndex(room, token);
+    }
     armTurnTimer(room);
     cb({ ok: true });
     broadcastState(room);

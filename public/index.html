@@ -364,10 +364,12 @@
 
   // Display string for a hand's total — plain "17" normally, "8/18" style for
   // a soft hand, or "BJ" for a genuine two-card natural (Ace + 10-value) —
-  // no need to spell out "11/21" when it's just a blackjack.
-  function scoreDisplay(hand){
+  // no need to spell out "11/21" when it's just a blackjack. allowBJ should
+  // be false for split hands: an Ace+10 after a split is just a normal 21,
+  // not a paid 3:2 blackjack, so it shouldn't wear the same badge.
+  function scoreDisplay(hand, allowBJ){
     const known = hand.filter(c => c.rank !== '?');
-    if(known.length === 2){
+    if(allowBJ && known.length === 2){
       const hasAce = known.some(c => c.rank === 'A');
       const hasTenValue = known.some(c => ['10','J','Q','K'].includes(c.rank));
       if(hasAce && hasTenValue) return 'BJ';
@@ -377,8 +379,8 @@
     return low === high ? `${high}` : `${low}/${high}`;
   }
 
-  function handScoreHtml(hand){
-    const val = scoreDisplay(hand);
+  function handScoreHtml(hand, allowBJ){
+    const val = scoreDisplay(hand, allowBJ !== false);
     return `<div class="hand-score ${val === 'BJ' ? 'hand-score-bj' : ''}">${val}</div>`;
   }
 
@@ -510,7 +512,7 @@
           <div class="sub-hand ${isActiveHand ? 'active-hand':''}">
             ${handsArr.length > 1 ? `<div class="sub-hand-label">Hand ${idx+1} · $${h.bet}</div>` : ''}
             <div class="hand">${handCardsHtml(key, h.cards, nextCardCounts)}</div>
-            ${handScoreHtml(h.cards)}
+            ${handScoreHtml(h.cards, !h.fromSplit)}
             <div class="player-status">${status}</div>
           </div>
         `;
