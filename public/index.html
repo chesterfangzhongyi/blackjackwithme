@@ -127,6 +127,9 @@
     position:relative;
   }
   .seat-label{font-family:'IBM Plex Mono',monospace; font-size:11px; text-transform:uppercase; letter-spacing:.1em; color:rgba(243,233,210,.55); margin-bottom:8px;}
+  .rules-banner{ display:block; width:100%; max-width:340px; height:auto; margin:0 auto 4px; opacity:.85; }
+  .rules-text-main{ font-family:'Fraunces',serif; font-size:15px; font-weight:600; fill:var(--red-suit); letter-spacing:.03em; }
+  .rules-text-sub{ font-family:'IBM Plex Mono',monospace; font-size:7px; fill:var(--cream); opacity:.7; letter-spacing:.03em; }
   .banker-seat{text-align:center;}
   .hand{display:flex; justify-content:center; gap:-8px; flex-wrap:wrap; min-height:78px; perspective:400px;}
   .hand-score{font-family:'IBM Plex Mono',monospace; font-size:13px; color:var(--gold-soft); margin-top:6px; text-align:center;}
@@ -208,6 +211,21 @@
   .chip.selected{transform:translateY(-8px);}
   .chip.selected .chip-inner{background:var(--gold); color:var(--felt-dark); border-color:var(--felt-dark);}
 
+  /* ---------- Chip on the mat (shown once a bet is placed) ---------- */
+  .mat-chip{
+    width:36px; height:36px; border-radius:50%; margin:4px auto 6px;
+    background:repeating-conic-gradient(var(--felt-dark) 0deg 20deg, var(--gold) 20deg 40deg);
+    display:flex; align-items:center; justify-content:center;
+    font-family:'IBM Plex Mono',monospace; font-weight:700; font-size:10px; color:var(--cream);
+    border:2px solid rgba(243,233,210,.5);
+    box-shadow:0 3px 7px var(--shadow);
+  }
+  .mat-chip.chip-drop{ animation:chipDrop .32s ease-out backwards; }
+  @keyframes chipDrop{
+    from{ transform:translateY(-22px) scale(.55); opacity:0; }
+    to{ transform:none; opacity:1; }
+  }
+
   /* ---------- Action dock (fixed to bottom, always reachable) ---------- */
   .action-dock{
     position:fixed; left:50%; transform:translateX(-50%); bottom:0;
@@ -277,6 +295,7 @@
   let joinError = '';
   let lastPhase = null;         // detects the moment a fresh round's cards land, so we know to reset the diff below
   let lastCardCounts = {};      // key ('banker' or 'token:handIndex') -> card count last render, for new-card detection
+  let lastBetsSeen = {};        // key ('bet:token') -> true once we've shown the chip-drop for this round's bet
 
   // If we were already in a room (saved from a previous connection or page
   // load), silently rejoin as soon as we connect — this is what makes a
@@ -479,6 +498,11 @@
     if(lastPhase === 'betting' && room.phase !== 'betting'){
       lastCardCounts = {};
     }
+    // Mirror image: the moment a fresh betting round opens, forget which
+    // chip-drops we've already shown, so this round's bets animate in too.
+    if(lastPhase !== 'betting' && room.phase === 'betting'){
+      lastBetsSeen = {};
+    }
     lastPhase = room.phase;
     const nextCardCounts = {};
 
@@ -496,9 +520,19 @@
       const isMyTurnPlayer = room.phase === 'player_turns' && room.currentTurn === pid;
       const activeIdx = room.activeHandIndex ? room.activeHandIndex[pid] : undefined;
 
-      let betStatus = '';
+      let betAreaHtml = '';
       if(room.phase === 'betting'){
-        betStatus = room.bets[pid] !== undefined ? `Bet $${room.bets[pid]}` : 'Waiting for bet…';
+        if(room.bets[pid] !== undefined){
+          const betKey = `bet:${pid}`;
+          const isNewBet = !lastBetsSeen[betKey];
+          lastBetsSeen[betKey] = true;
+          betAreaHtml = `
+            <div class="mat-chip ${isNewBet ? 'chip-drop' : ''}">$${room.bets[pid]}</div>
+            <div class="player-status">Bet placed</div>
+          `;
+        } else {
+          betAreaHtml = `<div class="player-status">Waiting for bet…</div>`;
+        }
       }
 
       const handsHtml = handsArr.map((h, idx) => {
@@ -524,7 +558,7 @@
             <span class="player-name">${p.name}${pid===myId ? ' (you)':''}</span>
             <span class="player-balance">${p.balance>=0?'+':''}$${p.balance.toFixed(2)}</span>
           </div>
-          ${handsHtml || `<div class="player-status">${betStatus}</div>`}
+          ${handsHtml || betAreaHtml}
         </div>
       `;
     }).join('');
@@ -545,6 +579,13 @@
       </div>
 
       <div class="felt">
+        <svg class="rules-banner" viewBox="0 0 480 78" aria-hidden="true">
+          <path id="rulesArcMain" d="M 26 62 Q 240 6 454 62" fill="none"/>
+          <path id="rulesArcSub" d="M 26 74 Q 240 22 454 74" fill="none"/>
+          <text class="rules-text-main"><textPath href="#rulesArcMain" startOffset="50%" text-anchor="middle">BLACKJACK PAYS 3 TO 2</textPath></text>
+          <text class="rules-text-sub"><textPath href="#rulesArcSub" startOffset="50%" text-anchor="middle">DEALER MUST DRAW TO 16 AND STAND ON ALL 17s</textPath></text>
+        </svg>
+
         <div class="banker-seat">
           <div class="seat-label">Banker's hand</div>
           <div class="hand" style="justify-content:center;">${bankerCardsHtml}</div>
