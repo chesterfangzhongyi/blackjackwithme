@@ -155,6 +155,10 @@
     from{ transform:translateY(-16px) scale(.8) rotateY(90deg); opacity:0; }
     to{ transform:none; opacity:1; }
   }
+  .card-back{
+    background:repeating-linear-gradient(45deg, var(--felt-light) 0 4px, var(--gold) 4px 5px);
+    border:1px solid rgba(228,199,103,.45);
+  }
 
   .players-row{
     display:flex; flex-direction:column; gap:16px;
@@ -307,9 +311,12 @@
   const RED = { hearts:true, diamonds:true };
 
   function cardEl(card, isNew, staggerIndex){
-    const red = RED[card.suit];
     const cls = isNew ? `card-deal` : '';
     const style = isNew ? ` style="animation-delay:${staggerIndex*90}ms"` : '';
+    if(card.suit === 'back'){
+      return `<div class="card card-back ${cls}"${style}></div>`;
+    }
+    const red = RED[card.suit];
     return `<div class="card ${red ? 'red':''} ${cls}"${style}><div>${card.rank}</div><div class="suit">${SUITS[card.suit]}</div></div>`;
   }
 
@@ -322,16 +329,41 @@
     return cards.map((c, i) => cardEl(c, i >= priorCount, i - priorCount)).join('');
   }
 
+  // "Best" total — aces count as 11 unless that would bust, matching the
+  // server's scoring. A face-down hole card ('?') doesn't count toward
+  // anything shown to the players who can't see it yet.
   function scoreOf(hand){
     if(!hand || !hand.length) return 0;
     let total=0, aces=0;
     for(const c of hand){
+      if(c.rank === '?') continue;
       if(c.rank==='A'){ total+=11; aces++; }
       else if(['J','Q','K'].includes(c.rank)) total+=10;
       else total+=parseInt(c.rank,10);
     }
     while(total>21 && aces>0){ total-=10; aces--; }
     return total;
+  }
+
+  // All aces counted as 1 — the "low" side of a soft total.
+  function scoreLow(hand){
+    if(!hand || !hand.length) return 0;
+    let total=0;
+    for(const c of hand){
+      if(c.rank === '?') continue;
+      if(c.rank==='A') total+=1;
+      else if(['J','Q','K'].includes(c.rank)) total+=10;
+      else total+=parseInt(c.rank,10);
+    }
+    return total;
+  }
+
+  // Display string for a hand's total — plain "17" normally, or "8/18" style
+  // for a soft hand (one where an Ace is doing double duty as 1 or 11).
+  function scoreDisplay(hand){
+    const high = scoreOf(hand);
+    const low = scoreLow(hand);
+    return low === high ? `${high}` : `${low}/${high}`;
   }
 
   function cardBaseValue(card){
@@ -462,7 +494,7 @@
           <div class="sub-hand ${isActiveHand ? 'active-hand':''}">
             ${handsArr.length > 1 ? `<div class="sub-hand-label">Hand ${idx+1} · $${h.bet}</div>` : ''}
             <div class="hand">${handCardsHtml(key, h.cards, nextCardCounts)}</div>
-            <div class="hand-score">${scoreOf(h.cards)}</div>
+            <div class="hand-score">${scoreDisplay(h.cards)}</div>
             <div class="player-status">${status}</div>
           </div>
         `;
@@ -498,7 +530,7 @@
         <div class="banker-seat">
           <div class="seat-label">Banker's hand</div>
           <div class="hand" style="justify-content:center;">${bankerCardsHtml}</div>
-          ${showBankerScore ? `<div class="hand-score">${scoreOf(bankerHand)}</div>` : ''}
+          ${showBankerScore ? `<div class="hand-score">${scoreDisplay(bankerHand)}</div>` : ''}
         </div>
 
         <div class="players-arc" style="min-height:${others.length ? (compactClass ? 200 : 240) : 0}px;">

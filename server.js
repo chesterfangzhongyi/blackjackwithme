@@ -80,8 +80,27 @@ function nonBankerTokens(room) {
   return room.turnOrder.filter((t) => t !== bankerToken);
 }
 
+// The banker's second card ("hole card") stays face-down to everyone until
+// the banker's own turn — real blackjack rules. This only masks the copy
+// that goes out over the wire; room.hands.banker on the server always holds
+// the true cards, so blackjack checks and payout math are unaffected.
+const HOLE_CARD = { rank: "?", suit: "back" };
+
+function maskForBroadcast(room) {
+  const holeHidden = (room.phase === "dealing" || room.phase === "player_turns") &&
+    room.hands.banker && room.hands.banker.length >= 2;
+  if (!holeHidden) return room;
+  return {
+    ...room,
+    hands: {
+      ...room.hands,
+      banker: [room.hands.banker[0], HOLE_CARD, ...room.hands.banker.slice(2)],
+    },
+  };
+}
+
 function broadcastState(room) {
-  io.to(room.code).emit("room_state", room);
+  io.to(room.code).emit("room_state", maskForBroadcast(room));
 }
 
 function ensureShoe(room, cardsNeeded) {
