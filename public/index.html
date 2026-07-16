@@ -128,8 +128,13 @@
   }
   .seat-label{font-family:'IBM Plex Mono',monospace; font-size:11px; text-transform:uppercase; letter-spacing:.1em; color:rgba(243,233,210,.55); margin-bottom:8px;}
   .banker-seat{text-align:center;}
-  .hand{display:flex; justify-content:center; gap:-8px; flex-wrap:wrap; min-height:78px;}
+  .hand{display:flex; justify-content:center; gap:-8px; flex-wrap:wrap; min-height:78px; perspective:400px;}
   .hand-score{font-family:'IBM Plex Mono',monospace; font-size:13px; color:var(--gold-soft); margin-top:6px; text-align:center;}
+
+  .player-seat.compact .card{width:36px; height:50px; font-size:12px;}
+  .player-seat.compact .card .suit{font-size:13px;}
+  .player-seat.compact .player-name{font-size:12px;}
+  .player-seat.compact .player-balance{font-size:11px;}
 
   .card{
     width:46px; height:64px; border-radius:7px; background:var(--card-white);
@@ -137,26 +142,39 @@
     display:flex; flex-direction:column; align-items:center; justify-content:center;
     font-family:'IBM Plex Mono',monospace; font-weight:600; font-size:15px; color:var(--ink);
     margin-left:-10px;
-    animation:deal .28s ease-out;
     border:1px solid rgba(0,0,0,.08);
   }
   .card:first-child{margin-left:0;}
   .card.red{color:var(--red-suit);}
   .card .suit{font-size:16px; line-height:1;}
-  @keyframes deal{ from{ transform:translateY(-14px) scale(.85); opacity:0;} to{ transform:none; opacity:1;} }
+  /* Only cards flagged as newly-dealt animate — a full re-render happens on
+     every table update (e.g. another player hitting), so without this every
+     card would replay the animation each time, not just the new one. */
+  .card.card-deal{ animation:dealFlip .38s ease-out backwards; }
+  @keyframes dealFlip{
+    from{ transform:translateY(-16px) scale(.8) rotateY(90deg); opacity:0; }
+    to{ transform:none; opacity:1; }
+  }
 
   .players-row{
     display:flex; flex-direction:column; gap:16px;
+  }
+  .players-arc{
+    position:relative;
   }
   .player-seat{
     background:rgba(0,0,0,.15);
     border:1px solid rgba(243,233,210,.12);
     border-radius:14px; padding:12px;
   }
+  .players-arc .player-seat{
+    position:absolute; transform:translateX(-50%); width:150px;
+  }
+  .players-arc .player-seat.compact{ width:112px; }
   .player-seat.active-turn{border-color:var(--gold); box-shadow:0 0 0 1px var(--gold);}
-  .player-seat-top{display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;}
-  .player-name{font-weight:600; font-size:14px;}
-  .player-balance{font-family:'IBM Plex Mono',monospace; font-size:12px; color:var(--gold-soft);}
+  .player-seat-top{display:flex; justify-content:space-between; align-items:center; margin-bottom:6px; gap:8px;}
+  .player-name{font-weight:600; font-size:14px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;}
+  .player-balance{font-family:'IBM Plex Mono',monospace; font-size:12px; color:var(--gold-soft); white-space:nowrap;}
   .player-status{font-family:'IBM Plex Mono',monospace; font-size:11px; color:rgba(243,233,210,.55); text-transform:uppercase; letter-spacing:.06em;}
 
   .sub-hand{padding:6px 0;}
@@ -249,6 +267,8 @@
   let toastTimer = null;
   let selectedChip = null;
   let joinError = '';
+  let lastPhase = null;         // detects the moment a fresh round's cards land, so we know to reset the diff below
+  let lastCardCounts = {};      // key ('banker' or 'token:handIndex') -> card count last render, for new-card detection
 
   // If we were already in a room (saved from a previous connection or page
   // load), silently rejoin as soon as we connect — this is what makes a
@@ -286,9 +306,20 @@
   const SUITS = { hearts:'♥', diamonds:'♦', clubs:'♣', spades:'♠' };
   const RED = { hearts:true, diamonds:true };
 
-  function cardEl(card){
+  function cardEl(card, isNew, staggerIndex){
     const red = RED[card.suit];
-    return `<div class="card ${red ? 'red':''}"><div>${card.rank}</div><div class="suit">${SUITS[card.suit]}</div></div>`;
+    const cls = isNew ? `card-deal` : '';
+    const style = isNew ? ` style="animation-delay:${staggerIndex*90}ms"` : '';
+    return `<div class="card ${red ? 'red':''} ${cls}"${style}><div>${card.rank}</div><div class="suit">${SUITS[card.suit]}</div></div>`;
+  }
+
+  // Renders a hand's cards, animating only the ones that weren't there last
+  // render (tracked by `key`) — otherwise every table update (e.g. someone
+  // else hitting) would replay the deal animation on every card, every time.
+  function handCardsHtml(key, cards, nextCounts){
+    const priorCount = lastCardCounts[key] || 0;
+    nextCounts[key] = cards.length;
+    return cards.map((c, i) => cardEl(c, i >= priorCount, i - priorCount)).join('');
   }
 
   function scoreOf(hand){
@@ -377,6 +408,14 @@
   }
 
   // ---------------- Table ----------------
+  function arcSeatStyle(i, total){
+    const t = total <= 1 ? 0 : (i / (total - 1)) * 2 - 1; // -1 (left) .. 1 (right)
+    const leftPct = 50 + t * 38;      // spread across ~76% of the felt's width
+    const curveDepth = 46;            // px the middle seat dips below the edges — classic "front edge of the table" bow
+    const topPx = curveDepth * (1 - t * t);
+    return `left:${leftPct}%; top:${topPx}px;`;
+  }
+
   function renderTable(){
     ensureCountdownTicking();
     const bankerId = room.turnOrder[room.bankerIndex];
@@ -384,10 +423,24 @@
     const bankerName = room.players[bankerId] ? room.players[bankerId].name : '—';
     const others = room.turnOrder.filter(id => id !== bankerId);
 
+    // A fresh round's initial cards just landed the moment we leave 'betting'
+    // for the first time — reset the new-card tracker so those first two
+    // cards animate in, instead of being mistaken for cards we'd already seen.
+    if(lastPhase === 'betting' && room.phase !== 'betting'){
+      lastCardCounts = {};
+    }
+    lastPhase = room.phase;
+    const nextCardCounts = {};
+
     const bankerHand = room.hands.banker || [];
     const showBankerScore = bankerHand.length > 0;
+    const bankerCardsHtml = handCardsHtml('banker', bankerHand, nextCardCounts);
 
-    let playersHtml = others.map(pid => {
+    const roundsLeft = room.roundsPerBanker - (room.roundCount % room.roundsPerBanker);
+
+    const compactClass = others.length >= 4 ? 'compact' : '';
+
+    let playersHtml = others.map((pid, i) => {
       const p = room.players[pid];
       const handsArr = (room.hands && room.hands[pid]) || []; // array of {cards,bet,standing,doubled,fromSplit}
       const isMyTurnPlayer = room.phase === 'player_turns' && room.currentTurn === pid;
@@ -404,10 +457,11 @@
         if(h.standing) status = scoreOf(h.cards) > 21 ? 'Bust' : (h.autoStood ? 'Timed out · stood' : (h.doubled ? 'Doubled · stood' : 'Stood'));
         else if(isActiveHand) status = 'Your move';
         else status = 'Playing…';
+        const key = `${pid}:${idx}`;
         return `
           <div class="sub-hand ${isActiveHand ? 'active-hand':''}">
             ${handsArr.length > 1 ? `<div class="sub-hand-label">Hand ${idx+1} · $${h.bet}</div>` : ''}
-            <div class="hand">${h.cards.map(cardEl).join('')}</div>
+            <div class="hand">${handCardsHtml(key, h.cards, nextCardCounts)}</div>
             <div class="hand-score">${scoreOf(h.cards)}</div>
             <div class="player-status">${status}</div>
           </div>
@@ -415,7 +469,7 @@
       }).join('');
 
       return `
-        <div class="player-seat ${isMyTurnPlayer ? 'active-turn':''}">
+        <div class="player-seat ${compactClass} ${isMyTurnPlayer ? 'active-turn':''}" style="${arcSeatStyle(i, others.length)}">
           <div class="player-seat-top">
             <span class="player-name">${p.name}${pid===myId ? ' (you)':''}</span>
             <span class="player-balance">${p.balance>=0?'+':''}$${p.balance.toFixed(2)}</span>
@@ -425,6 +479,8 @@
       `;
     }).join('');
 
+    lastCardCounts = nextCardCounts;
+
     app.classList.add('has-action-bar');
     app.innerHTML = `
       <div class="table-header">
@@ -433,7 +489,7 @@
           <div class="room-code">${room.code}</div>
         </div>
         <div style="display:flex; align-items:center; gap:8px;">
-          <div class="banker-badge">🎩 Banker: ${bankerName}${iAmBanker ? ' (you)':''}</div>
+          <div class="banker-badge">🎩 Banker: ${bankerName}${iAmBanker ? ' (you)':''} · ${roundsLeft} left</div>
           <button id="leaveBtn" title="Leave table" style="background:none;border:none;color:rgba(243,233,210,.5);font-family:'IBM Plex Mono',monospace;font-size:11px;cursor:pointer;padding:4px;">✕</button>
         </div>
       </div>
@@ -441,11 +497,11 @@
       <div class="felt">
         <div class="banker-seat">
           <div class="seat-label">Banker's hand</div>
-          <div class="hand" style="justify-content:center;">${bankerHand.map(cardEl).join('')}</div>
+          <div class="hand" style="justify-content:center;">${bankerCardsHtml}</div>
           ${showBankerScore ? `<div class="hand-score">${scoreOf(bankerHand)}</div>` : ''}
         </div>
 
-        <div class="players-row">
+        <div class="players-arc" style="min-height:${others.length ? (compactClass ? 200 : 240) : 0}px;">
           ${playersHtml || '<div class="waiting-note">Waiting for players to join…</div>'}
         </div>
       </div>
@@ -478,12 +534,27 @@
     if(countdownInterval) return;
     countdownInterval = setInterval(() => {
       if(room && room.turnDeadline && room.phase === 'player_turns'){
-        render();
+        updateTimerDisplay();
       } else {
         clearInterval(countdownInterval);
         countdownInterval = null;
       }
     }, 1000);
+  }
+
+  // Patches just the countdown text/color in place — a full render() every
+  // second was rebuilding the card DOM too, which retriggered the "deal"
+  // animation and made the cards visibly flicker each tick.
+  function updateTimerDisplay(){
+    const secs = remainingSeconds();
+    if(secs === null) return;
+    const badge = document.getElementById('turnTimerBadge');
+    if(badge){
+      badge.textContent = `⏱ ${secs}s to act`;
+      badge.classList.toggle('urgent', secs <= 5);
+    }
+    const waitVal = document.getElementById('waitingCountdownVal');
+    if(waitVal){ waitVal.textContent = secs; }
   }
 
   function renderActionArea(iAmBanker){
@@ -521,7 +592,7 @@
       const secs = remainingSeconds();
       return `
         <div>
-          ${secs !== null ? `<div class="turn-timer ${secs<=5?'urgent':''}">⏱ ${secs}s to act</div>` : ''}
+          ${secs !== null ? `<div class="turn-timer ${secs<=5?'urgent':''}" id="turnTimerBadge">⏱ ${secs}s to act</div>` : ''}
           ${(canDouble || canSplit) ? `
             <div class="action-bar-secondary">
               ${canDouble ? `<button class="btn btn-ghost btn-sm" id="doubleBtn">Double Down</button>` : ''}
@@ -538,7 +609,7 @@
     if(room.phase === 'player_turns'){
       const secs = remainingSeconds();
       const waitName = room.players[room.currentTurn] ? room.players[room.currentTurn].name : 'the table';
-      return `<div class="waiting-note">Waiting on ${waitName}…${secs !== null ? ` (${secs}s)` : ''}</div>`;
+      return `<div class="waiting-note">Waiting on ${waitName}…${secs !== null ? ` (<span id="waitingCountdownVal">${secs}</span>s)` : ''}</div>`;
     }
 
     if(room.phase === 'dealing'){
