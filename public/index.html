@@ -110,11 +110,11 @@
     display:flex; align-items:center; justify-content:space-between;
     padding:10px 2px 16px;
   }
-  .room-code{font-family:'IBM Plex Mono',monospace; letter-spacing:.12em; font-size:15px; color:var(--gold-soft);}
+  .room-code{font-family:'IBM Plex Mono',monospace; letter-spacing:.12em; font-size:17px; color:var(--gold-soft);}
   .banker-badge{
-    font-family:'IBM Plex Mono',monospace; font-size:11px; letter-spacing:.06em;
+    font-family:'IBM Plex Mono',monospace; font-size:12px; letter-spacing:.06em;
     background:rgba(201,162,39,.16); border:1px solid rgba(201,162,39,.4);
-    padding:5px 10px; border-radius:999px; color:var(--gold-soft);
+    padding:6px 11px; border-radius:999px; color:var(--gold-soft);
   }
 
   /* ---------- Table felt ---------- */
@@ -126,13 +126,13 @@
     padding:20px 16px;
     position:relative;
   }
-  .seat-label{font-family:'IBM Plex Mono',monospace; font-size:11px; text-transform:uppercase; letter-spacing:.1em; color:rgba(243,233,210,.55); margin-bottom:8px;}
-  .rules-banner{ display:block; width:100%; max-width:340px; height:auto; margin:0 auto 4px; opacity:.85; }
-  .rules-text-main{ font-family:'Fraunces',serif; font-size:15px; font-weight:600; fill:var(--red-suit); letter-spacing:.03em; }
-  .rules-text-sub{ font-family:'IBM Plex Mono',monospace; font-size:7px; fill:var(--cream); opacity:.7; letter-spacing:.03em; }
+  .seat-label{font-family:'IBM Plex Mono',monospace; font-size:12px; text-transform:uppercase; letter-spacing:.1em; color:rgba(243,233,210,.55); margin-bottom:8px;}
+  .rules-banner{ display:block; width:100%; max-width:420px; height:auto; margin:0 auto 4px; opacity:.9; }
+  .rules-text-main{ font-family:'Fraunces',serif; font-size:19px; font-weight:600; fill:var(--red-suit); letter-spacing:.03em; }
+  .rules-text-sub{ font-family:'IBM Plex Mono',monospace; font-size:9px; fill:var(--cream); opacity:.75; letter-spacing:.03em; }
   .banker-seat{text-align:center;}
   .hand{display:flex; justify-content:center; gap:-8px; flex-wrap:wrap; min-height:78px; perspective:400px;}
-  .hand-score{font-family:'IBM Plex Mono',monospace; font-size:13px; color:var(--gold-soft); margin-top:6px; text-align:center;}
+  .hand-score{font-family:'IBM Plex Mono',monospace; font-size:15px; color:var(--gold-soft); margin-top:6px; text-align:center;}
   .hand-score-bj{
     display:inline-block; color:var(--felt-dark); background:var(--gold-soft);
     font-weight:700; padding:2px 10px; border-radius:999px; letter-spacing:.05em;
@@ -140,8 +140,8 @@
 
   .player-seat.compact .card{width:36px; height:50px; font-size:12px;}
   .player-seat.compact .card .suit{font-size:13px;}
-  .player-seat.compact .player-name{font-size:12px;}
-  .player-seat.compact .player-balance{font-size:11px;}
+  .player-seat.compact .player-name{font-size:13px;}
+  .player-seat.compact .player-balance{font-size:12px;}
 
   .card{
     width:46px; height:64px; border-radius:7px; background:var(--card-white);
@@ -179,19 +179,19 @@
     border-radius:14px; padding:12px;
   }
   .players-arc .player-seat{
-    position:absolute; transform:translateX(-50%); width:150px;
+    position:absolute; transform:translateX(-50%); width:172px;
   }
-  .players-arc .player-seat.compact{ width:112px; }
+  .players-arc .player-seat.compact{ width:128px; }
   .player-seat.active-turn{border-color:var(--gold); box-shadow:0 0 0 1px var(--gold);}
-  .player-seat-top{display:flex; justify-content:space-between; align-items:center; margin-bottom:6px; gap:8px;}
-  .player-name{font-weight:600; font-size:14px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;}
-  .player-balance{font-family:'IBM Plex Mono',monospace; font-size:12px; color:var(--gold-soft); white-space:nowrap;}
-  .player-status{font-family:'IBM Plex Mono',monospace; font-size:11px; color:rgba(243,233,210,.55); text-transform:uppercase; letter-spacing:.06em;}
+  .player-seat-top{display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:6px; gap:8px;}
+  .player-name{font-weight:600; font-size:15px; flex:1; min-width:0; overflow-wrap:break-word;}
+  .player-balance{font-family:'IBM Plex Mono',monospace; font-size:13px; color:var(--gold-soft); white-space:nowrap; flex-shrink:0;}
+  .player-status{font-family:'IBM Plex Mono',monospace; font-size:12px; color:rgba(243,233,210,.55); text-transform:uppercase; letter-spacing:.06em;}
 
   .sub-hand{padding:6px 0;}
   .sub-hand + .sub-hand{border-top:1px dashed rgba(243,233,210,.15); margin-top:6px;}
   .sub-hand.active-hand{background:rgba(201,162,39,.08); border-radius:8px; margin:0 -6px; padding:6px;}
-  .sub-hand-label{font-family:'IBM Plex Mono',monospace; font-size:10px; text-transform:uppercase; letter-spacing:.08em; color:var(--gold-soft); margin-bottom:4px; text-align:center;}
+  .sub-hand-label{font-family:'IBM Plex Mono',monospace; font-size:11px; text-transform:uppercase; letter-spacing:.08em; color:var(--gold-soft); margin-bottom:4px; text-align:center;}
 
   /* ---------- Chip selector ---------- */
   .chip-row{display:flex; justify-content:center; gap:12px; margin:6px 0 16px;}
@@ -245,12 +245,12 @@
   .btn-sm{padding:9px 10px; font-size:13px;}
 
   .waiting-note{
-    text-align:center; font-family:'IBM Plex Mono',monospace; font-size:12px;
+    text-align:center; font-family:'IBM Plex Mono',monospace; font-size:13px;
     color:rgba(243,233,210,.55); padding:14px 0;
   }
 
   .turn-timer{
-    text-align:center; font-family:'IBM Plex Mono',monospace; font-size:12px;
+    text-align:center; font-family:'IBM Plex Mono',monospace; font-size:13px;
     color:var(--gold-soft); margin-bottom:10px; letter-spacing:.06em;
   }
   .turn-timer.urgent{color:#E8908F;}
@@ -579,9 +579,9 @@
       </div>
 
       <div class="felt">
-        <svg class="rules-banner" viewBox="0 0 480 78" aria-hidden="true">
-          <path id="rulesArcMain" d="M 26 62 Q 240 6 454 62" fill="none"/>
-          <path id="rulesArcSub" d="M 26 74 Q 240 22 454 74" fill="none"/>
+        <svg class="rules-banner" viewBox="0 0 480 92" aria-hidden="true">
+          <path id="rulesArcMain" d="M 22 72 Q 240 8 458 72" fill="none"/>
+          <path id="rulesArcSub" d="M 22 87 Q 240 27 458 87" fill="none"/>
           <text class="rules-text-main"><textPath href="#rulesArcMain" startOffset="50%" text-anchor="middle">BLACKJACK PAYS 3 TO 2</textPath></text>
           <text class="rules-text-sub"><textPath href="#rulesArcSub" startOffset="50%" text-anchor="middle">DEALER MUST DRAW TO 16 AND STAND ON ALL 17s</textPath></text>
         </svg>
