@@ -159,6 +159,11 @@
   .player-balance{font-family:'IBM Plex Mono',monospace; font-size:12px; color:var(--gold-soft);}
   .player-status{font-family:'IBM Plex Mono',monospace; font-size:11px; color:rgba(243,233,210,.55); text-transform:uppercase; letter-spacing:.06em;}
 
+  .sub-hand{padding:6px 0;}
+  .sub-hand + .sub-hand{border-top:1px dashed rgba(243,233,210,.15); margin-top:6px;}
+  .sub-hand.active-hand{background:rgba(201,162,39,.08); border-radius:8px; margin:0 -6px; padding:6px;}
+  .sub-hand-label{font-family:'IBM Plex Mono',monospace; font-size:10px; text-transform:uppercase; letter-spacing:.08em; color:var(--gold-soft); margin-bottom:4px; text-align:center;}
+
   /* ---------- Chip selector ---------- */
   .chip-row{display:flex; justify-content:center; gap:12px; margin:6px 0 16px;}
   .chip{
@@ -191,6 +196,9 @@
   .action-bar .btn{flex:1;}
   .btn-stand{background:rgba(243,233,210,.9); color:var(--felt-dark);}
   .btn-hit{background:linear-gradient(180deg, var(--gold-soft), var(--gold)); color:var(--felt-dark);}
+  .action-bar-secondary{display:flex; gap:8px; margin-bottom:8px;}
+  .action-bar-secondary .btn{flex:1;}
+  .btn-sm{padding:9px 10px; font-size:13px;}
 
   .waiting-note{
     text-align:center; font-family:'IBM Plex Mono',monospace; font-size:12px;
@@ -289,6 +297,12 @@
     return total;
   }
 
+  function cardBaseValue(card){
+    if(card.rank === 'A') return 11;
+    if(['J','Q','K'].includes(card.rank)) return 10;
+    return parseInt(card.rank,10);
+  }
+
   // ---------------- Lobby ----------------
   function renderLobby(){
     app.classList.remove('has-action-bar');
@@ -368,25 +382,38 @@
 
     let playersHtml = others.map(pid => {
       const p = room.players[pid];
-      const hand = (room.hands && room.hands[pid]) || [];
-      const isTurn = room.phase === 'player_turns' && room.currentTurn === pid;
-      const stood = room.standing && room.standing[pid];
-      let status = '';
+      const handsArr = (room.hands && room.hands[pid]) || []; // array of {cards,bet,standing,doubled,fromSplit}
+      const isMyTurnPlayer = room.phase === 'player_turns' && room.currentTurn === pid;
+      const activeIdx = room.activeHandIndex ? room.activeHandIndex[pid] : undefined;
+
+      let betStatus = '';
       if(room.phase === 'betting'){
-        status = room.bets[pid] !== undefined ? `Bet $${room.bets[pid]}` : 'Waiting for bet…';
-      } else if(hand.length){
-        if(stood) status = scoreOf(hand) > 21 ? 'Bust' : 'Stood';
-        else if(isTurn) status = 'Your move';
-        else status = 'Playing…';
+        betStatus = room.bets[pid] !== undefined ? `Bet $${room.bets[pid]}` : 'Waiting for bet…';
       }
+
+      const handsHtml = handsArr.map((h, idx) => {
+        const isActiveHand = isMyTurnPlayer && activeIdx === idx;
+        let status = '';
+        if(h.standing) status = scoreOf(h.cards) > 21 ? 'Bust' : (h.doubled ? 'Doubled · stood' : 'Stood');
+        else if(isActiveHand) status = 'Your move';
+        else status = 'Playing…';
+        return `
+          <div class="sub-hand ${isActiveHand ? 'active-hand':''}">
+            ${handsArr.length > 1 ? `<div class="sub-hand-label">Hand ${idx+1} · $${h.bet}</div>` : ''}
+            <div class="hand">${h.cards.map(cardEl).join('')}</div>
+            <div class="hand-score">${scoreOf(h.cards)}</div>
+            <div class="player-status">${status}</div>
+          </div>
+        `;
+      }).join('');
+
       return `
-        <div class="player-seat ${isTurn ? 'active-turn':''}">
+        <div class="player-seat ${isMyTurnPlayer ? 'active-turn':''}">
           <div class="player-seat-top">
             <span class="player-name">${p.name}${pid===myId ? ' (you)':''}</span>
             <span class="player-balance">${p.balance>=0?'+':''}$${p.balance.toFixed(2)}</span>
           </div>
-          ${hand.length ? `<div class="hand">${hand.map(cardEl).join('')}</div><div class="hand-score">${scoreOf(hand)}</div>` : ''}
-          <div class="player-status">${status}</div>
+          ${handsHtml || `<div class="player-status">${betStatus}</div>`}
         </div>
       `;
     }).join('');
@@ -460,10 +487,23 @@
     }
 
     if(room.phase === 'player_turns' && room.currentTurn === myId){
+      const hands = room.hands[myId] || [];
+      const activeIdx = room.activeHandIndex ? room.activeHandIndex[myId] : 0;
+      const hand = hands[activeIdx];
+      const canDouble = hand && hand.cards.length === 2 && !hand.doubled;
+      const canSplit = hands.length === 1 && hand && hand.cards.length === 2 &&
+        cardBaseValue(hand.cards[0]) === cardBaseValue(hand.cards[1]);
       return `
-        <div class="action-bar">
-          <button class="btn btn-stand" id="standBtn">Stand</button>
-          <button class="btn btn-hit" id="hitBtn">Hit</button>
+        <div>
+          ${(canDouble || canSplit) ? `
+            <div class="action-bar-secondary">
+              ${canDouble ? `<button class="btn btn-ghost btn-sm" id="doubleBtn">Double Down</button>` : ''}
+              ${canSplit ? `<button class="btn btn-ghost btn-sm" id="splitBtn">Split</button>` : ''}
+            </div>` : ''}
+          <div class="action-bar">
+            <button class="btn btn-stand" id="standBtn">Stand</button>
+            <button class="btn btn-hit" id="hitBtn">Hit</button>
+          </div>
         </div>
       `;
     }
@@ -508,9 +548,13 @@
       };
     }
     const hitBtn = document.getElementById('hitBtn');
-    if(hitBtn){ hitBtn.onclick = () => socket.emit('hit', { code: room.code }, () => {}); }
+    if(hitBtn){ hitBtn.onclick = () => socket.emit('hit', { code: room.code }, (res) => { if(!res.ok) alert(res.error); }); }
     const standBtn = document.getElementById('standBtn');
-    if(standBtn){ standBtn.onclick = () => socket.emit('stand', { code: room.code }, () => {}); }
+    if(standBtn){ standBtn.onclick = () => socket.emit('stand', { code: room.code }, (res) => { if(!res.ok) alert(res.error); }); }
+    const doubleBtn = document.getElementById('doubleBtn');
+    if(doubleBtn){ doubleBtn.onclick = () => socket.emit('double', { code: room.code }, (res) => { if(!res.ok) alert(res.error); }); }
+    const splitBtn = document.getElementById('splitBtn');
+    if(splitBtn){ splitBtn.onclick = () => socket.emit('split', { code: room.code }, (res) => { if(!res.ok) alert(res.error); }); }
   }
 
   function render(){

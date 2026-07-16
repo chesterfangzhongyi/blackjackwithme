@@ -83,6 +83,15 @@ function isBust(hand) {
   return scoreHand(hand).total > 21;
 }
 
+/**
+ * Base value of a single card for split-eligibility checks (J/Q/K/10 all
+ * count as 10, Ace as 11) — NOT the same as scoreHand's soft-Ace handling,
+ * this is just "do these two cards match for splitting purposes."
+ */
+function cardBaseValue(card) {
+  return RANK_VALUE[card.rank];
+}
+
 module.exports = {
   SUITS,
   RANKS,
@@ -92,4 +101,5 @@ module.exports = {
   scoreHand,
   isBlackjack,
   isBust,
+  cardBaseValue,
 };
