@@ -205,6 +205,12 @@
     color:rgba(243,233,210,.55); padding:14px 0;
   }
 
+  .turn-timer{
+    text-align:center; font-family:'IBM Plex Mono',monospace; font-size:12px;
+    color:var(--gold-soft); margin-bottom:10px; letter-spacing:.06em;
+  }
+  .turn-timer.urgent{color:#E8908F;}
+
   .toast{
     position:fixed; left:50%; bottom:calc(env(safe-area-inset-bottom,16px) + 128px); transform:translateX(-50%);
     background:var(--felt-light); border:1px solid var(--gold); color:var(--cream);
@@ -372,13 +378,14 @@
 
   // ---------------- Table ----------------
   function renderTable(){
+    ensureCountdownTicking();
     const bankerId = room.turnOrder[room.bankerIndex];
     const iAmBanker = myId === bankerId;
     const bankerName = room.players[bankerId] ? room.players[bankerId].name : '—';
     const others = room.turnOrder.filter(id => id !== bankerId);
 
     const bankerHand = room.hands.banker || [];
-    const showBankerScore = bankerHand.length > 0 && room.phase !== 'betting';
+    const showBankerScore = bankerHand.length > 0;
 
     let playersHtml = others.map(pid => {
       const p = room.players[pid];
@@ -394,7 +401,7 @@
       const handsHtml = handsArr.map((h, idx) => {
         const isActiveHand = isMyTurnPlayer && activeIdx === idx;
         let status = '';
-        if(h.standing) status = scoreOf(h.cards) > 21 ? 'Bust' : (h.doubled ? 'Doubled · stood' : 'Stood');
+        if(h.standing) status = scoreOf(h.cards) > 21 ? 'Bust' : (h.autoStood ? 'Timed out · stood' : (h.doubled ? 'Doubled · stood' : 'Stood'));
         else if(isActiveHand) status = 'Your move';
         else status = 'Playing…';
         return `
@@ -461,6 +468,24 @@
     }
   }
 
+  function remainingSeconds(){
+    if(!room || !room.turnDeadline) return null;
+    return Math.max(0, Math.ceil((room.turnDeadline - Date.now())/1000));
+  }
+
+  let countdownInterval = null;
+  function ensureCountdownTicking(){
+    if(countdownInterval) return;
+    countdownInterval = setInterval(() => {
+      if(room && room.turnDeadline && room.phase === 'player_turns'){
+        render();
+      } else {
+        clearInterval(countdownInterval);
+        countdownInterval = null;
+      }
+    }, 1000);
+  }
+
   function renderActionArea(iAmBanker){
     if(room.phase === 'betting'){
       if(iAmBanker){
@@ -493,8 +518,10 @@
       const canDouble = hand && hand.cards.length === 2 && !hand.doubled;
       const canSplit = hands.length === 1 && hand && hand.cards.length === 2 &&
         cardBaseValue(hand.cards[0]) === cardBaseValue(hand.cards[1]);
+      const secs = remainingSeconds();
       return `
         <div>
+          ${secs !== null ? `<div class="turn-timer ${secs<=5?'urgent':''}">⏱ ${secs}s to act</div>` : ''}
           ${(canDouble || canSplit) ? `
             <div class="action-bar-secondary">
               ${canDouble ? `<button class="btn btn-ghost btn-sm" id="doubleBtn">Double Down</button>` : ''}
@@ -509,7 +536,9 @@
     }
 
     if(room.phase === 'player_turns'){
-      return `<div class="waiting-note">Waiting on ${room.players[room.currentTurn] ? room.players[room.currentTurn].name : 'the table'}…</div>`;
+      const secs = remainingSeconds();
+      const waitName = room.players[room.currentTurn] ? room.players[room.currentTurn].name : 'the table';
+      return `<div class="waiting-note">Waiting on ${waitName}…${secs !== null ? ` (${secs}s)` : ''}</div>`;
     }
 
     if(room.phase === 'dealing'){
@@ -520,11 +549,16 @@
       return `<div class="waiting-note">Banker is playing it out…</div>`;
     }
 
+    if(room.phase === 'payout'){
+      return `<div class="waiting-note">Round settled — next bets opening shortly…</div>`;
+    }
+
     return '';
   }
 
   function renderToast(){
-    if(!room.lastResults || room.phase !== 'betting') return '';
+    if(!room.lastResults) return '';
+    if(room.phase !== 'payout' && room.phase !== 'betting') return '';
     const mine = room.lastResults[myId];
     if(mine === undefined) return '';
     const sign = mine > 0 ? '+' : '';

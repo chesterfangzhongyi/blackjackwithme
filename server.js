@@ -34,9 +34,13 @@ app.get("/health", (req, res) => res.json({ ok: true, rooms: Object.keys(rooms).
 
 const MIN_BET = 1;
 const MAX_BET = 5;
+const TURN_TIME_MS = 20000;        // how long a player has to act before auto-standing
+const BANKER_CARD_DELAY_MS = 700;  // pacing between each card the banker draws, so it's watchable
+const PAYOUT_PAUSE_MS = 1800;      // how long the banker's final total stays on screen before the next round opens
 
 const rooms = {};                 // { [code]: room }
 const socketToken = new Map();    // socket.id -> token, rebuilt on every connect/reconnect
+const turnTimers = new Map();     // room.code -> Timeout handle, kept off the room object so it doesn't get JSON-broadcast
 
 function makeRoomCode() {
   const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
@@ -62,6 +66,7 @@ function newRoom(code, creatorToken, creatorName, roundsPerBanker) {
     hands: {},             // { token: [handObj, ...], banker: [...cards] }
     activeHandIndex: {},   // { token: 0 | 1 } — which of a player's hands they're currently acting on
     currentTurn: null,
+    turnDeadline: null,    // ms epoch — when the current player's action clock runs out; null if no one's on the clock
     phase: "betting",      // betting | dealing | player_turns | banker_turn | payout
   };
 }
@@ -127,7 +132,7 @@ function startDealing(room) {
   if (bankerBJ) {
     // Skip straight to payout — no point playing out hands vs a banker natural.
     for (const t of players) room.hands[t].forEach((h) => (h.standing = true));
-    resolvePayout(room);
+    finishRound(room);
     return;
   }
 
@@ -138,6 +143,7 @@ function startDealing(room) {
     runBankerTurn(room);
   } else {
     room.activeHandIndex[room.currentTurn] = firstUnresolvedHandIndex(room, room.currentTurn);
+    armTurnTimer(room);
   }
 }
 
@@ -166,15 +172,64 @@ function advanceAfterHandDone(room) {
   }
 }
 
-function runBankerTurn(room) {
-  room.phase = "banker_turn";
-  while (scoreHand(room.hands.banker).total < 17) {
-    room.hands.banker.push(...deal(room.deck, 1));
+// Arms (or clears) the per-turn action clock. Broadcast-safe: turnDeadline is
+// a plain timestamp on the room; the actual Timeout handle is kept in the
+// module-level turnTimers map so it never gets JSON-serialized to clients.
+function armTurnTimer(room) {
+  const existing = turnTimers.get(room.code);
+  if (existing) clearTimeout(existing);
+
+  if (room.phase === "player_turns" && room.currentTurn) {
+    room.turnDeadline = Date.now() + TURN_TIME_MS;
+    const handle = setTimeout(() => autoStandCurrent(room), TURN_TIME_MS);
+    turnTimers.set(room.code, handle);
+  } else {
+    room.turnDeadline = null;
+    turnTimers.delete(room.code);
   }
-  resolvePayout(room);
 }
 
-function resolvePayout(room) {
+// Fires when a player's action clock runs out — stands their current hand
+// for them (the safe default) and moves play on.
+function autoStandCurrent(room) {
+  const token = room.currentTurn;
+  if (!token || room.phase !== "player_turns") return;
+  const hand = currentHand(room, token);
+  if (hand && !hand.standing) {
+    hand.standing = true;
+    hand.autoStood = true; // lets the UI show "Timed out" instead of "Stood"
+    advanceAfterHandDone(room);
+  }
+  armTurnTimer(room);
+  broadcastState(room);
+}
+
+// Banker draws one card at a time with a short pause between each, instead
+// of resolving instantly, so the reveal is actually watchable — previously
+// the whole banker turn + payout happened in one server tick and the client
+// never saw an intermediate state at all.
+function runBankerTurn(room) {
+  room.phase = "banker_turn";
+  room.currentTurn = null;
+  armTurnTimer(room);
+  broadcastState(room);
+  dealNextBankerCard(room);
+}
+
+function dealNextBankerCard(room) {
+  if (scoreHand(room.hands.banker).total < 17) {
+    setTimeout(() => {
+      room.hands.banker.push(...deal(room.deck, 1));
+      broadcastState(room);
+      dealNextBankerCard(room);
+    }, BANKER_CARD_DELAY_MS);
+  } else {
+    // Banker's done — hold on the final total for a beat before payout lands.
+    setTimeout(() => finishRound(room), PAYOUT_PAUSE_MS);
+  }
+}
+
+function finishRound(room) {
   const bankerToken = getBankerToken(room);
   const bankerHand = room.hands.banker;
   const bankerBJ = isBlackjack(bankerHand);
@@ -217,10 +272,19 @@ function resolvePayout(room) {
   }
 
   room.lastResults = results;
-  room.bets = {};
   room.currentTurn = null;
+  armTurnTimer(room);
+  room.phase = "payout"; // final banker hand + results stay visible for PAYOUT_PAUSE_MS
+  broadcastState(room);
+
+  setTimeout(() => openBettingPhase(room), PAYOUT_PAUSE_MS);
+}
+
+function openBettingPhase(room) {
+  room.bets = {};
   room.activeHandIndex = {};
   room.phase = "betting";
+  broadcastState(room);
 }
 
 function requireToken(socket) {
@@ -309,6 +373,7 @@ io.on("connection", (socket) => {
       hand.standing = true;
       advanceAfterHandDone(room);
     }
+    armTurnTimer(room);
     cb({ ok: true });
     broadcastState(room);
   });
@@ -321,6 +386,7 @@ io.on("connection", (socket) => {
 
     currentHand(room, token).standing = true;
     advanceAfterHandDone(room);
+    armTurnTimer(room);
     cb({ ok: true });
     broadcastState(room);
   });
@@ -341,6 +407,7 @@ io.on("connection", (socket) => {
     hand.cards.push(...deal(room.deck, 1));
     hand.standing = true; // double down = exactly one more card, then forced stand
     advanceAfterHandDone(room);
+    armTurnTimer(room);
     cb({ ok: true });
     broadcastState(room);
   });
@@ -367,6 +434,7 @@ io.on("connection", (socket) => {
       { cards: [cardB, ...deal(room.deck, 1)], bet, standing: false, doubled: false, fromSplit: true },
     ];
     room.activeHandIndex[token] = 0;
+    armTurnTimer(room);
     cb({ ok: true });
     broadcastState(room);
   });
