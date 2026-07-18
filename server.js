@@ -40,6 +40,7 @@ const PAYOUT_PAUSE_MS = 1800;      // how long the banker's final total stays on
 
 const rooms = {};                 // { [code]: room }
 const socketToken = new Map();    // socket.id -> token, rebuilt on every connect/reconnect
+const tokenSocket = new Map();    // token -> latest live socket.id, so we know who to send the banker's real hand to
 const turnTimers = new Map();     // room.code -> Timeout handle, kept off the room object so it doesn't get JSON-broadcast
 
 function makeRoomCode() {
@@ -100,7 +101,20 @@ function maskForBroadcast(room) {
 }
 
 function broadcastState(room) {
-  io.to(room.code).emit("room_state", maskForBroadcast(room));
+  const bankerToken = getBankerToken(room);
+  const bankerSocketId = tokenSocket.get(bankerToken);
+  const masked = maskForBroadcast(room);
+
+  if (bankerSocketId) {
+    // Everyone except the banker gets the masked view; the banker always
+    // sees their own real hand — masking was hiding it from the banker too,
+    // which is wrong (the dealer obviously knows their own cards).
+    io.to(room.code).except(bankerSocketId).emit("room_state", masked);
+    io.to(bankerSocketId).emit("room_state", room);
+  } else {
+    // Banker isn't currently connected — safest default is to mask for whoever is present.
+    io.to(room.code).emit("room_state", masked);
+  }
 }
 
 function ensureShoe(room, cardsNeeded) {
@@ -330,6 +344,7 @@ io.on("connection", (socket) => {
     rooms[code] = room;
     socket.join(code);
     socketToken.set(socket.id, token);
+    tokenSocket.set(token, socket.id);
     console.log(`[create_room] code=${code} by=${name} token=${token}`);
     cb({ ok: true, code });
     broadcastState(room);
@@ -346,6 +361,7 @@ io.on("connection", (socket) => {
 
     socket.join(code);
     socketToken.set(socket.id, token);
+    tokenSocket.set(token, socket.id);
 
     if (room.players[token]) {
       console.log(`[join_room] REJOIN — ${name} (${token}) back in ${code}`);

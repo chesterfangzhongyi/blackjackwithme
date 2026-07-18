@@ -544,7 +544,7 @@
         const key = `${pid}:${idx}`;
         return `
           <div class="sub-hand ${isActiveHand ? 'active-hand':''}">
-            ${handsArr.length > 1 ? `<div class="sub-hand-label">Hand ${idx+1} · $${h.bet}</div>` : ''}
+            <div class="sub-hand-label">${handsArr.length > 1 ? `Hand ${idx+1} · ` : ''}$${h.bet}</div>
             <div class="hand">${handCardsHtml(key, h.cards, nextCardCounts)}</div>
             ${handScoreHtml(h.cards, !h.fromSplit)}
             <div class="player-status">${status}</div>
